@@ -1,32 +1,43 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 
-const socket = io('http://localhost:3001');
+const socket = io('https://call-feature-ma0y.onrender.com');
 const roomId = 'highchat-room';
 
 function Admin() {
   const localAudioRef = useRef();
-  const remoteAudioRef = useRef();
+  const remoteAudioRef = useRef(); // <-- NEW
   const [pc, setPc] = useState(null);
   const [connected, setConnected] = useState(false);
-  const [waiting, setWaiting] = useState(false);
 
   useEffect(() => {
     socket.emit('join', roomId);
 
-    // When Guest accepts the call
-    socket.on('call-accepted', async () => {
-      console.log('✅ Guest accepted the call');
-      setWaiting(false);
+    socket.on('answer', async ({ answer }) => {
+      if (pc) {
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      }
+    });
 
+    socket.on('ice-candidate', ({ candidate }) => {
+      pc?.addIceCandidate(new RTCIceCandidate(candidate));
+    });
+  }, [pc]);
+
+  const startCall = async () => {
+    try {
       const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
       if (localAudioRef.current) {
         localAudioRef.current.srcObject = localStream;
       }
 
       const peerConnection = new RTCPeerConnection();
+
+      // Send local audio
       localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
+      // Receive remote audio
       peerConnection.ontrack = event => {
         if (remoteAudioRef.current) {
           remoteAudioRef.current.srcObject = event.streams[0];
@@ -41,48 +52,31 @@ function Admin() {
 
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
-      socket.emit('offer', { offer, roomId });
 
+      socket.emit('offer', { offer, roomId });
       setPc(peerConnection);
       setConnected(true);
-    });
-
-    socket.on('answer', async ({ answer }) => {
-      if (pc) {
-        console.log('📡 Admin received answer');
-        await pc.setRemoteDescription(new RTCSessionDescription(answer));
-      }
-    });
-
-    socket.on('ice-candidate', ({ candidate }) => {
-      if (pc) {
-        pc.addIceCandidate(new RTCIceCandidate(candidate));
-      }
-    });
-  }, [pc]);
-
-  const startCall = () => {
-    socket.emit('call-request', { roomId });
-    setWaiting(true);
-    alert('📞 Call request sent. Waiting for Guest to accept...');
+    } catch (error) {
+      console.error('Error accessing media devices: ', error);
+      alert("Error accessing microphone. Please check permissions.");
+    }
   };
 
   const endCall = () => {
     pc?.close();
     setConnected(false);
-    setWaiting(false);
   };
 
   return (
     <div>
       <h2>Admin (User1)</h2>
       <audio ref={localAudioRef} autoPlay muted></audio>
-      <audio ref={remoteAudioRef} autoPlay></audio>
-      {!connected && !waiting && (
+      <audio ref={remoteAudioRef} autoPlay></audio> {/* <-- Add this */}
+      {!connected ? (
         <button onClick={startCall}>Start Call</button>
+      ) : (
+        <button onClick={endCall}>End Call</button>
       )}
-      {waiting && <p>⏳ Waiting for Guest to accept...</p>}
-      {connected && <button onClick={endCall}>End Call</button>}
     </div>
   );
 }
