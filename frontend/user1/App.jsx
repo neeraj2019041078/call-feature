@@ -6,6 +6,7 @@ const roomId = 'highchat-room';
 
 function Admin() {
   const localAudioRef = useRef();
+  const remoteAudioRef = useRef(); // <-- NEW
   const [pc, setPc] = useState(null);
   const [connected, setConnected] = useState(false);
 
@@ -25,17 +26,23 @@ function Admin() {
 
   const startCall = async () => {
     try {
-      // Request audio and video access
       const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      // Display the stream in the audio element
       if (localAudioRef.current) {
         localAudioRef.current.srcObject = localStream;
       }
 
-      // Peer connection setup
       const peerConnection = new RTCPeerConnection();
+
+      // Send local audio
       localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+      // Receive remote audio
+      peerConnection.ontrack = event => {
+        if (remoteAudioRef.current) {
+          remoteAudioRef.current.srcObject = event.streams[0];
+        }
+      };
 
       peerConnection.onicecandidate = event => {
         if (event.candidate) {
@@ -64,6 +71,7 @@ function Admin() {
     <div>
       <h2>Admin (User1)</h2>
       <audio ref={localAudioRef} autoPlay muted></audio>
+      <audio ref={remoteAudioRef} autoPlay></audio> {/* <-- Add this */}
       {!connected ? (
         <button onClick={startCall}>Start Call</button>
       ) : (
