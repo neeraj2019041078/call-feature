@@ -5,7 +5,7 @@ const { Server } = require('socket.io');
 
 const app = express();
 app.use(cors({
-   origin: ['http://localhost:5173', 'http://localhost:5174'],  // Allow these two frontend URLs
+   origin: ['https://cerulean-sunburst-82a136.netlify.app'],  // Allow these two frontend URLs
   methods: ['GET', 'POST']
 }));
 
