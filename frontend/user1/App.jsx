@@ -1,31 +1,30 @@
-// Admin.js
 import React, { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 
-const socket = io('https://call-feature-ma0y.onrender.com'); // Your deployed backend
+const socket = io('https://call-feature-ma0y.onrender.com');
 const roomId = 'highchat-room';
 
 function Admin() {
   const localAudioRef = useRef();
   const remoteAudioRef = useRef();
-  const [pc, setPc] = useState(null);
+  const pcRef = useRef(null);
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
     socket.emit('join', roomId);
 
     socket.on('answer', async ({ answer }) => {
-      if (pc) {
-        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      if (pcRef.current && !pcRef.current.remoteDescription) {
+        await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
       }
     });
 
     socket.on('ice-candidate', ({ candidate }) => {
-      if (pc) {
-        pc.addIceCandidate(new RTCIceCandidate(candidate));
+      if (pcRef.current) {
+        pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
       }
     });
-  }, [pc]);
+  }, []);
 
   const startCall = async () => {
     try {
@@ -35,50 +34,41 @@ function Admin() {
         localAudioRef.current.srcObject = localStream;
       }
 
-      const peerConnection = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-      });
+      const pc = new RTCPeerConnection();
+      pcRef.current = pc;
 
-      // Add tracks
-      localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-      });
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-      // Receive remote audio
-      peerConnection.ontrack = (event) => {
-        console.log('👂 Received remote stream on Admin');
+      pc.ontrack = event => {
         if (remoteAudioRef.current) {
           remoteAudioRef.current.srcObject = event.streams[0];
         }
       };
 
-      // Send ICE candidates
-      peerConnection.onicecandidate = event => {
+      pc.onicecandidate = event => {
         if (event.candidate) {
           socket.emit('ice-candidate', { candidate: event.candidate, roomId });
         }
       };
 
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
       socket.emit('offer', { offer, roomId });
-      setPc(peerConnection);
+
       setConnected(true);
     } catch (error) {
-      console.error('Error accessing microphone:', error);
-      alert('Microphone access error.');
+      console.error('Error during startCall:', error);
     }
   };
 
   const endCall = () => {
-    pc?.close();
+    pcRef.current?.close();
     setConnected(false);
   };
 
   return (
     <div>
-      <h2>Admin (User1)</h2>
+      <h2>Admin (Caller)</h2>
       <audio ref={localAudioRef} autoPlay muted />
       <audio ref={remoteAudioRef} autoPlay />
       {!connected ? (
