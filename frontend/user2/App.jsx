@@ -5,108 +5,67 @@ const socket = io('https://call-feature-ma0y.onrender.com');
 const roomId = 'highchat-room';
 
 function Guest() {
-  const localAudio = useRef();
-  const remoteAudio = useRef();
-  const pcRef = useRef(null);
-  const localStreamRef = useRef(null);
-
-  const [incomingCall, setIncomingCall] = useState(false);
-  const [connected, setConnected] = useState(false);
+  const localAudioRef = useRef();
+  const remoteAudioRef = useRef();
+  const [pc, setPc] = useState(null);
 
   useEffect(() => {
-    socket.emit('join', { roomId, userType: 'guest' });
-
-    socket.on('incoming-call', () => {
-      setIncomingCall(true);
-    });
+    socket.emit('join', roomId);
 
     socket.on('offer', async ({ offer }) => {
-      const pc = createPeerConnection();
-      await setupLocalStream();
+      try {
+        const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
+        if (localAudioRef.current) {
+          localAudioRef.current.srcObject = localStream;
+        }
 
-      socket.emit('answer', { answer, roomId });
-      setConnected(true);
-    });
+        const peerConnection = new RTCPeerConnection();
 
-    socket.on('answer', async ({ answer }) => {
-      await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+        // Send local audio to the peer connection
+        localStream.getTracks().forEach(track => {
+          peerConnection.addTrack(track, localStream);
+        });
+
+        // Receive remote audio
+        peerConnection.ontrack = event => {
+          if (remoteAudioRef.current) {
+            remoteAudioRef.current.srcObject = event.streams[0];
+          }
+        };
+
+        peerConnection.onicecandidate = event => {
+          if (event.candidate) {
+            socket.emit('ice-candidate', { candidate: event.candidate, roomId });
+          }
+        };
+
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+
+        // Send answer to the admin
+        socket.emit('answer', { answer, roomId });
+        setPc(peerConnection);
+      } catch (error) {
+        console.error('Error during offer handling:', error);
+        alert('Microphone access is required. Please allow it.');
+      }
     });
 
     socket.on('ice-candidate', ({ candidate }) => {
-      pcRef.current?.addIceCandidate(new RTCIceCandidate(candidate));
-    });
-
-    return () => socket.disconnect();
-  }, []);
-
-  const createPeerConnection = () => {
-    const pc = new RTCPeerConnection();
-    pc.onicecandidate = e => {
-      if (e.candidate) {
-        socket.emit('ice-candidate', { candidate: e.candidate, roomId });
+      if (pc) {
+        pc.addIceCandidate(new RTCIceCandidate(candidate));
       }
-    };
-    pc.ontrack = e => {
-      remoteAudio.current.srcObject = e.streams[0];
-    };
-    pcRef.current = pc;
-    return pc;
-  };
-
-  const setupLocalStream = async () => {
-    const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    localStreamRef.current = localStream;
-    localAudio.current.srcObject = localStream;
-    localStream.getTracks().forEach(track => pcRef.current.addTrack(track, localStream));
-  };
-
-  const startCall = () => {
-    socket.emit('start-call', { roomId, from: 'guest' });
-  };
-
-  const acceptCall = async () => {
-    setIncomingCall(false);
-    await setupLocalStream();
-  };
-
-  const sendOffer = async () => {
-    const pc = createPeerConnection();
-    await setupLocalStream();
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    socket.emit('offer', { offer, roomId });
-    setConnected(true);
-  };
-
-  const endCall = () => {
-    pcRef.current?.close();
-    localStreamRef.current?.getTracks().forEach(track => track.stop());
-    setConnected(false);
-  };
+    });
+  }, [pc]);
 
   return (
     <div>
-      <h2>Guest</h2>
-      <audio ref={localAudio} autoPlay muted />
-      <audio ref={remoteAudio} autoPlay />
-
-      {!connected ? (
-        incomingCall ? (
-          <button onClick={acceptCall}>Accept Call</button>
-        ) : (
-          <button onClick={startCall}>Start Call</button>
-        )
-      ) : (
-        <button onClick={endCall}>End Call</button>
-      )}
-
-      {!connected && !incomingCall && (
-        <button onClick={sendOffer}>Send Offer (Manually start WebRTC)</button>
-      )}
+      <h2>Guest (User2)</h2>
+      <audio ref={localAudioRef} autoPlay muted></audio>
+      <audio ref={remoteAudioRef} autoPlay></audio>
     </div>
   );
 }
