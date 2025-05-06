@@ -6,7 +6,7 @@ const roomId = 'highchat-room';
 
 function Admin() {
   const localAudioRef = useRef();
-  const remoteAudioRef = useRef(); // <-- NEW
+  const remoteAudioRef = useRef();
   const [pc, setPc] = useState(null);
   const [connected, setConnected] = useState(false);
 
@@ -15,12 +15,15 @@ function Admin() {
 
     socket.on('answer', async ({ answer }) => {
       if (pc) {
+        console.log('📡 Admin received answer');
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
       }
     });
 
     socket.on('ice-candidate', ({ candidate }) => {
-      pc?.addIceCandidate(new RTCIceCandidate(candidate));
+      if (pc) {
+        pc.addIceCandidate(new RTCIceCandidate(candidate));
+      }
     });
   }, [pc]);
 
@@ -34,7 +37,7 @@ function Admin() {
 
       const peerConnection = new RTCPeerConnection();
 
-      // Send local audio
+      // Send local audio to the peer connection
       localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
       // Receive remote audio
@@ -53,12 +56,14 @@ function Admin() {
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
 
+      // Send offer to the guest
       socket.emit('offer', { offer, roomId });
+
       setPc(peerConnection);
       setConnected(true);
     } catch (error) {
       console.error('Error accessing media devices: ', error);
-      alert("Error accessing microphone. Please check permissions.");
+      alert('Error accessing microphone. Please check permissions.');
     }
   };
 
@@ -71,7 +76,7 @@ function Admin() {
     <div>
       <h2>Admin (User1)</h2>
       <audio ref={localAudioRef} autoPlay muted></audio>
-      <audio ref={remoteAudioRef} autoPlay></audio> {/* <-- Add this */}
+      <audio ref={remoteAudioRef} autoPlay></audio>
       {!connected ? (
         <button onClick={startCall}>Start Call</button>
       ) : (

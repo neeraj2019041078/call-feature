@@ -5,7 +5,7 @@ const socket = io('https://call-feature-ma0y.onrender.com');
 const roomId = 'highchat-room';
 
 function Guest() {
-  const localAudioRef = useRef(); // Optional: for self-monitoring
+  const localAudioRef = useRef();
   const remoteAudioRef = useRef();
   const [pc, setPc] = useState(null);
 
@@ -22,15 +22,17 @@ function Guest() {
 
         const peerConnection = new RTCPeerConnection();
 
+        // Send local audio to the peer connection
+        localStream.getTracks().forEach(track => {
+          peerConnection.addTrack(track, localStream);
+        });
+
+        // Receive remote audio
         peerConnection.ontrack = event => {
           if (remoteAudioRef.current) {
             remoteAudioRef.current.srcObject = event.streams[0];
           }
         };
-
-        localStream.getTracks().forEach(track => {
-          peerConnection.addTrack(track, localStream);
-        });
 
         peerConnection.onicecandidate = event => {
           if (event.candidate) {
@@ -43,11 +45,12 @@ function Guest() {
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
 
+        // Send answer to the admin
         socket.emit('answer', { answer, roomId });
         setPc(peerConnection);
       } catch (error) {
         console.error('Error during offer handling:', error);
-        alert("Microphone access is required. Please allow it.");
+        alert('Microphone access is required. Please allow it.');
       }
     });
 
@@ -61,7 +64,7 @@ function Guest() {
   return (
     <div>
       <h2>Guest (User2)</h2>
-      <audio ref={localAudioRef} autoPlay muted></audio> {/* Optional */}
+      <audio ref={localAudioRef} autoPlay muted></audio>
       <audio ref={remoteAudioRef} autoPlay></audio>
     </div>
   );
