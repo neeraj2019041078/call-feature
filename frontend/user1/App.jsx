@@ -1,12 +1,13 @@
+// Admin.js
 import React, { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 
-const socket = io('https://call-feature-ma0y.onrender.com');
+const socket = io('https://call-feature-ma0y.onrender.com'); // Your deployed backend
 const roomId = 'highchat-room';
 
 function Admin() {
   const localAudioRef = useRef();
-  const remoteAudioRef = useRef(); // <-- NEW
+  const remoteAudioRef = useRef();
   const [pc, setPc] = useState(null);
   const [connected, setConnected] = useState(false);
 
@@ -20,7 +21,9 @@ function Admin() {
     });
 
     socket.on('ice-candidate', ({ candidate }) => {
-      pc?.addIceCandidate(new RTCIceCandidate(candidate));
+      if (pc) {
+        pc.addIceCandidate(new RTCIceCandidate(candidate));
+      }
     });
   }, [pc]);
 
@@ -32,18 +35,24 @@ function Admin() {
         localAudioRef.current.srcObject = localStream;
       }
 
-      const peerConnection = new RTCPeerConnection();
+      const peerConnection = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      });
 
-      // Send local audio
-      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+      // Add tracks
+      localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+      });
 
       // Receive remote audio
-      peerConnection.ontrack = event => {
+      peerConnection.ontrack = (event) => {
+        console.log('👂 Received remote stream on Admin');
         if (remoteAudioRef.current) {
           remoteAudioRef.current.srcObject = event.streams[0];
         }
       };
 
+      // Send ICE candidates
       peerConnection.onicecandidate = event => {
         if (event.candidate) {
           socket.emit('ice-candidate', { candidate: event.candidate, roomId });
@@ -57,8 +66,8 @@ function Admin() {
       setPc(peerConnection);
       setConnected(true);
     } catch (error) {
-      console.error('Error accessing media devices: ', error);
-      alert("Error accessing microphone. Please check permissions.");
+      console.error('Error accessing microphone:', error);
+      alert('Microphone access error.');
     }
   };
 
@@ -70,8 +79,8 @@ function Admin() {
   return (
     <div>
       <h2>Admin (User1)</h2>
-      <audio ref={localAudioRef} autoPlay muted></audio>
-      <audio ref={remoteAudioRef} autoPlay></audio> {/* <-- Add this */}
+      <audio ref={localAudioRef} autoPlay muted />
+      <audio ref={remoteAudioRef} autoPlay />
       {!connected ? (
         <button onClick={startCall}>Start Call</button>
       ) : (
