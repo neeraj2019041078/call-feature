@@ -6,7 +6,7 @@ const { Server } = require('socket.io');
 const app = express();
 
 app.use(cors({
-  origin: ['https://snazzy-peony-5b17e4.netlify.app'], 
+  origin: '*', 
   methods: ['GET', 'POST']
 }));
 
