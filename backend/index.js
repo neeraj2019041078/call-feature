@@ -4,15 +4,10 @@ const cors = require('cors');
 const { Server } = require('socket.io');
 
 const app = express();
-
-app.use(cors({
-  origin: '*', 
-  methods: ['GET', 'POST']
-}));
+app.use(cors());
 
 const server = http.createServer(app);
 
-// Initialize Socket.IO server
 const io = new Server(server, {
   cors: {
     origin: '*',
@@ -20,41 +15,40 @@ const io = new Server(server, {
   }
 });
 
+const users = {}; // roomId => { [socket.id]: userType }
+
 io.on('connection', socket => {
-  console.log(`🔌 User connected: ${socket.id}`);
+  console.log(`🔌 Connected: ${socket.id}`);
 
-  // Join a room
-  socket.on('join', roomId => {
+  socket.on('join', ({ roomId, userType }) => {
     socket.join(roomId);
-    console.log(`📥 User ${socket.id} joined room: ${roomId}`);
-    socket.to(roomId).emit('user-joined', socket.id); // Notify others in the room
+    users[socket.id] = { roomId, userType };
+    console.log(`📥 ${userType} joined ${roomId}`);
   });
 
-  // Handle offer from admin
+  socket.on('start-call', ({ roomId, from }) => {
+    console.log(`📞 Call initiated from ${from} in room ${roomId}`);
+    socket.to(roomId).emit('incoming-call', { from });
+  });
+
   socket.on('offer', ({ offer, roomId }) => {
-    console.log(`📡 Offer from ${socket.id} to room ${roomId}`);
-    socket.to(roomId).emit('offer', { offer }); // Send offer to room
+    socket.to(roomId).emit('offer', { offer });
   });
 
-  // Handle answer from guest
   socket.on('answer', ({ answer, roomId }) => {
-    console.log(`📡 Answer from ${socket.id} to room ${roomId}`);
-    socket.to(roomId).emit('answer', { answer }); // Send answer to admin
+    socket.to(roomId).emit('answer', { answer });
   });
 
-  // Handle ICE candidates
   socket.on('ice-candidate', ({ candidate, roomId }) => {
-    console.log(`📡 ICE candidate from ${socket.id} to room ${roomId}`);
-    socket.to(roomId).emit('ice-candidate', { candidate }); // Send ICE candidate to room
+    socket.to(roomId).emit('ice-candidate', { candidate });
   });
 
-  // Handle disconnection
   socket.on('disconnect', () => {
-    console.log(`❌ User disconnected: ${socket.id}`);
+    console.log(`❌ Disconnected: ${socket.id}`);
+    delete users[socket.id];
   });
 });
 
-// Start the server
 server.listen(3001, () => {
-  console.log('🚀 Socket.IO signaling server running on port 3001');
+  console.log('🚀 Server running on port 3001');
 });
